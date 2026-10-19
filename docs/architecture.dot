@@ -1,0 +1,55 @@
+// Growth Experimentation Platform: architecture. Render with:  dot -Tpng -Gdpi=150 docs/architecture.dot -o assets/architecture.png
+digraph G {
+  rankdir=LR; compound=true; fontname="Helvetica"; nodesep=0.28; ranksep=0.55;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, color="#5b6770", fillcolor="#ffffff", margin="0.12,0.06"];
+  edge [color="#5b6770", fontname="Helvetica", fontsize=9, arrowsize=0.7];
+
+  subgraph cluster_data { label="1. Data (simulated, truth known)"; style="rounded,filled"; fillcolor="#eef3fb"; color="#9db4d6";
+    sim  [label="Simulator\nsrc/simulation\n100k users, 9 experiments,\nplanted bugs"];
+    pq   [label="Parquet warehouse\n7 tables + hidden\nanswer key", fillcolor="#fff7e0"];
+    sim -> pq;
+  }
+
+  subgraph cluster_sql { label="2. SQL layer (DuckDB)"; style="rounded,filled"; fillcolor="#eaf6ee"; color="#9fcfae";
+    stg  [label="staging\nstg_events_clean\n(dedup, late flag)"];
+    mart [label="marts\nper-user metrics,\nper-user weekly"];
+    ana  [label="analysis (11 reports)\nfunnel, retention, sessions,\nwindows, top-N, RFM,\nstreaks, data quality, SRM,\noverlap, interaction"];
+    stg -> mart; stg -> ana;
+  }
+
+  subgraph cluster_exp { label="3. Can we trust it? (src/experiments)"; style="rounded,filled"; fillcolor="#fdf0ef"; color="#e0aaa6";
+    fl   [label="first_look\nSRM check, naive vs CUPED"];
+    st   [label="studies\npower, peeking,\nmultiple testing"];
+    nv   [label="novelty + interaction"];
+    rv   [label="revenue\nheavy tails"];
+    sc   [label="scorecard\ntrust gates, Holm, power,\neconomics -> decision", fillcolor="#ffe3c2", penwidth=1.6];
+    va   [label="validation\n100 fresh worlds:\nbias, coverage"];
+    fl -> sc; st -> sc; nv -> sc; rv -> sc;
+  }
+
+  subgraph cluster_tg { label="4. Who should get it? (src/targeting)"; style="rounded,filled"; fillcolor="#f3eefb"; color="#c2add9";
+    up [label="uplift\nS / T / X learners,\ncross-fitting, Qini"];
+    ms [label="multiseed\n10 seeds, paired bootstrap,\nhold-out profit"];
+    up -> ms;
+  }
+
+  subgraph cluster_real { label="5. Real-data check (src/criteo)"; style="rounded,filled"; fillcolor="#fffbe6"; color="#e5d58a";
+    cr [label="Criteo 1M-row sample\nbalance, AIPW,\nrobust model comparison"];
+  }
+
+  subgraph cluster_out { label="6. Outputs"; style="rounded,filled"; fillcolor="#f2f2f2"; color="#b5b5b5";
+    art  [label="artifacts/\nCSV + charts"];
+    app  [label="Streamlit app\n12 sections", fillcolor="#d9f0ff"];
+    memo [label="Decision memos\nship exp_001 /\ntarget exp_008", fillcolor="#d9f0ff"];
+    art -> app;
+  }
+
+  tests [label="tests/ (SQL answers checked by hand)\n+ GitHub Actions CI", shape=note, fillcolor="#fafafa", style="filled,dashed"];
+
+  pq -> stg [label="load"];
+  mart -> fl; mart -> st; mart -> nv; mart -> rv; mart -> up; mart -> va;
+  ana -> art;
+  sc -> art; va -> art; ms -> art; cr -> art; st -> art;
+  sc -> memo; ms -> memo;
+  tests -> stg [style=dashed, arrowhead=none, label="guards"];
+}

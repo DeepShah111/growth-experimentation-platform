@@ -1,0 +1,5 @@
+variant_a,variant_b,users,orders,orders_sq,orders_per_user
+control,control,22453,6810.0,13664.0,0.3033
+control,treatment,22440,7163.0,15417.0,0.31921
+treatment,control,22790,7569.0,15955.0,0.33212
+treatment,treatment,22244,8022.0,19056.0,0.36064

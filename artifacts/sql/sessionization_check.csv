@@ -1,0 +1,4 @@
+device,logged_sessions,rebuilt_sessions,rebuilt_to_logged_ratio
+android,887922.0,873646.0,0.9839
+ios,469234.0,461556.0,0.9836
+web,183323.0,180420.0,0.9842

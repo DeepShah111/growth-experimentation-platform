@@ -1,0 +1,7 @@
+segment,users,avg_recency_days,avg_orders,avg_revenue,share_of_revenue
+champions,9608,11.7,4.42,2065.59,0.5042
+loyal,7805,28.4,2.39,1011.94,0.2006
+at_risk,6479,62.3,2.02,865.94,0.1425
+lost,9449,67.7,1.0,378.03,0.0907
+new_or_promising,3637,13.8,1.0,368.73,0.0341
+needs_attention,2842,36.8,1.0,385.4,0.0278

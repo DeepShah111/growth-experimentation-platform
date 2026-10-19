@@ -1,0 +1,7 @@
+,share_of_top30_that_are_truly_high_lift
+S-learner,0.564
+T-learner,0.575
+X-learner,0.608
+random,0.355
+rule: new users first,0.346
+ref: rank by true relative lift (not a ceiling),1.0

@@ -1,0 +1,6 @@
+strategy,false_positive_rate
+1 look at the end (correct),0.058
+"peek weekly (4 looks), naive 5%",0.11
+"peek every day (28 looks), naive 5%",0.25
+"peek every day, Bonferroni",0.018
+"peek weekly, O'Brien-Fleming bounds",0.047

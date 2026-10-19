@@ -1,0 +1,4 @@
+device,sessions,cart_rate,cart_to_checkout,checkout_to_purchase,session_conversion
+android,887922,0.2234,0.5477,0.4822,0.059
+ios,469234,0.2234,0.548,0.5422,0.0664
+web,183323,0.2248,0.5491,0.2922,0.0361

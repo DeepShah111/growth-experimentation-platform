@@ -1,0 +1,5 @@
+n_null_experiments,"P(>=1 false win), no correction",theory 1-0.95^m,with Holm
+1,0.049,0.05,0.05
+5,0.195,0.226,0.06
+10,0.395,0.401,0.062
+20,0.616,0.642,0.062
