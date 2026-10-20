@@ -1,0 +1,42 @@
+// Data and model flow: raw data -> cleaning -> SQL -> features -> models -> evaluation -> decision.
+// Render:  dot -Tpng -Gdpi=130 docs/ml_pipeline.dot -o assets/ml_pipeline.png
+digraph ML {
+  rankdir=TB; compound=true; fontname="Helvetica"; nodesep=0.35; ranksep=0.5; newrank=true;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, color="#5b6770", fillcolor="#ffffff", margin="0.14,0.08"];
+  edge [color="#5b6770", fontname="Helvetica", fontsize=9, arrowsize=0.7];
+
+  raw   [label="RAW TABLES  (Parquet -> DuckDB)\nusers | products | sessions | events | orders | experiments | assignments\nhidden answer key lives in a separate schema and is never a feature", fillcolor="#eef3fb"];
+  clean [label="CLEANING  sql/staging/stg_events_clean.sql\n- drop exact duplicate events (0.60% of events)\n- flag events that arrive > 1 day late (1.51%, kept but flagged)\n5,275,310 raw events -> 5,243,847 distinct events", fillcolor="#eaf6ee"];
+  marts [label="SQL MARTS  (one row per assigned user, ORDER BY user_id)\nOUTCOMES: orders_in, revenue_in  (assignment -> end of experiment)\nPRE-PERIOD FEATURES (28 days before start): orders_pre, revenue_pre, sessions_pre\nPROFILE: days_since_signup, is_new, device, channel, city", fillcolor="#eaf6ee", penwidth=1.6];
+  rep   [label="SQL REPORTS (11)\nfunnel | retention | sessionization | running totals / LAG |\ntop-N | RFM | streaks | data quality | SRM | overlap | interaction", fillcolor="#eaf6ee"];
+
+  raw -> clean -> marts;
+  clean -> rep;
+
+  subgraph cluster_stats { label="STATISTICS (no model): can we trust and read the result?"; style="rounded,filled"; fillcolor="#fdf0ef"; color="#e0aaa6"; fontsize=11;
+    srm [label="Trust gate\nsample-ratio chi-square"];
+    est [label="Effect estimate\nCUPED (pre-period covariate),\nHolm correction, minimum detectable lift"];
+    chk [label="Validity checks\nnovelty trend | overlap interaction |\nheavy-tail revenue estimators"];
+    sc  [label="DECISION SCORECARD\nSHIP / ITERATE / INCONCLUSIVE / DO NOT TRUST\n+ economics gate (profit at assumed unit economics)", fillcolor="#ffe3c2", penwidth=1.6];
+    srm -> est -> sc; chk -> sc;
+  }
+
+  subgraph cluster_ml { label="MACHINE LEARNING: who should get the offer?  (uplift models)"; style="rounded,filled"; fillcolor="#f3eefb"; color="#c2add9"; fontsize=11;
+    ft [label="FEATURE MATRIX\n5 numeric + 3 categorical\n(only information known BEFORE the experiment)"];
+    cf [label="4-FOLD CROSS-FITTING\nevery user is scored by a model\nthat never trained on that user"];
+    lr [label="S / T / X LEARNERS\nHistGradientBoosting: 150 trees, depth 4,\nlearning rate 0.05, Poisson loss on orders_in\n+ baselines: random, 'new users first'"];
+    ev [label="EVALUATION on randomised data\ninverse-propensity Qini vs random, bootstrap CI,\n10 seeds, paired bootstrap between learners,\nhold-out profit (cut-off picked on one half, scored on the other)"];
+    po [label="TARGETING POLICY\nsend the offer to the top ~24% by score\n(not to everyone: unprofitable overall)", fillcolor="#ffe3c2", penwidth=1.6];
+    ft -> cf -> lr -> ev -> po;
+  }
+
+  subgraph cluster_real { label="REAL DATA CHECK (Criteo, randomised ad test)"; style="rounded,filled"; fillcolor="#fffbe6"; color="#e5d58a"; fontsize=11;
+    cr [label="1M-row sample, 12 anonymised features\nbalance check, propensity AUC,\nnaive vs adjusted vs doubly-robust (AIPW) effect,\nsame learners scored with AIPW"];
+  }
+
+  out [label="OUTPUTS\nartifacts/ (CSV, charts)  ->  Streamlit app   |   decision memos (ship exp_001, target exp_008)", fillcolor="#d9f0ff"];
+
+  marts -> srm; marts -> chk; marts -> ft;
+  cr -> lr [style=dashed, label="same model code"];
+  sc -> out; po -> out; rep -> out; cr -> out;
+}

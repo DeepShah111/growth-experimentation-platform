@@ -10,6 +10,8 @@ promotions at the users who actually respond, with a profit view.
 experiment and can test whether the analysis finds it. A real randomised dataset (Criteo) checks the methods on real data.
 This is a prototype on 100,000 simulated users, not a production system.
 
+**Live demo:** [https://YOUR-APP-NAME.streamlit.app](https://YOUR-APP-NAME.streamlit.app) (replace with your real link after deploying; steps in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). Free apps sleep when unused: if you see "this app has gone to sleep", click the wake-up button and wait a minute.
+
 > Status: v1.0 (prototype). Done: simulator, SQL layer with a test per query, A/B studies, novelty and interaction checks,
 > decision scorecard with an economics gate, multi-seed uplift with a hold-out profit cut-off, heavy-tail revenue analysis,
 > platform self-validation, two decision memos, Criteo real-data validation, Streamlit results viewer.
@@ -27,14 +29,56 @@ validated by repeating the whole analysis in 100 fresh simulated worlds (`src/ex
 
 ![Architecture of the Growth Experimentation Platform](assets/architecture.png)
 
+## Data and model architecture (end to end)
+How a raw event becomes a decision: clean it in SQL, build one row per user, then either read the experiment with statistics
+or train uplift models to decide who gets the offer.
+
+![Data and model flow: raw tables, cleaning, SQL marts, statistics and machine learning branches, outputs](assets/ml_pipeline.png)
+
+| # | stage | goes in -> comes out | what happens | where |
+|---|---|---|---|---|
+| 1 | Simulate | config -> 7 Parquet tables (about 85 MB) | 100,000 users over 84 days (days 0 to 27 are the pre-period), 9 experiments with hidden true effects; planted problems: duplicate events (0.60%), late events (1.51%), a sample-ratio bug (exp_006), two experiments sharing users | `src/simulation` |
+| 2 | Load | Parquet -> DuckDB | each Parquet file is loaded into a DuckDB table; the hidden answer key goes into a separate `answer_key` schema | `sql/schema`, `src/warehouse/build_warehouse.py` |
+| 3 | Clean | `events` -> `stg_events_clean` | drop exact duplicate events (same session, type, timestamp, product), flag events that arrive more than a day late but keep them; 5,275,310 raw events become 5,243,847 | `sql/staging` |
+| 4 | Report | clean tables -> 11 CSVs | funnel, retention, sessionization (LAG), running totals, top-N, RFM, streaks, data-quality monitor, SRM, overlap, interaction | `sql/analysis`, `src/warehouse/run_sql.py` |
+| 5 | Model the data | clean tables -> one row per assigned user | outcomes after assignment (`orders_in`, `revenue_in`) and features from the 28 days before the experiment (`orders_pre`, `revenue_pre`, `sessions_pre`) plus profile (`days_since_signup`, `is_new`, `device`, `channel`, `city`); sorted by user id so results are repeatable | `sql/marts` |
+| 6 | Statistics (no model) | marts -> a decision per experiment | sample-ratio check, CUPED, Holm correction, power, novelty trend, overlap interaction, heavy-tail revenue, economics gate, then SHIP / ITERATE / INCONCLUSIVE / DO NOT TRUST | `src/experiments` |
+| 7 | Machine learning | marts -> a score per user | 8 features -> 4-fold cross-fitting -> S, T and X uplift learners -> "how many extra orders does the offer cause for this user?" | `src/targeting/uplift.py` |
+| 8 | Evaluate | scores -> honest numbers | inverse-propensity Qini against random targeting, bootstrap intervals, 10 seeds, paired bootstrap between learners, hold-out profit | `src/targeting` |
+| 9 | Real data | Criteo sample -> same checks | balance check, propensity AUC, naive vs adjusted vs doubly-robust effect, learners scored with doubly-robust values | `src/criteo` |
+| 10 | Deliver | results -> people | `artifacts/` files, the Streamlit app, two decision memos | `app/`, `docs/memos/` |
+
+### The machine-learning models
+| model | question it answers | how it works | settings |
+|---|---|---|---|
+| S-learner | what extra orders does the offer cause for this user? | one model sees the features plus a "treated" flag; uplift = its prediction with the flag on minus off | gradient boosting (scikit-learn `HistGradientBoostingRegressor`): 150 trees, depth 4, learning rate 0.05, minimum 200 users per leaf, L2 1.0, Poisson loss because the target is an order count |
+| T-learner | same | two separate models, one trained on treated users and one on control; uplift = difference | same settings |
+| X-learner | same | uses the two models to impute each user's missing outcome, then fits models to those imputed effects and blends them by the share treated | same settings, squared-error loss for the effect models |
+| Baselines | is the model better than something trivial? | random order; "new users first" rule | none |
+| CUPED | how do we read the experiment with less noise? | a linear adjustment using the 28-day pre-period (not a learned model) | n/a |
+| Doubly-robust (AIPW), Criteo only | the effect when assignment is not perfectly balanced | boosted outcome models plus a boosted propensity model, cross-fitted over 3 folds, propensities clipped | `HistGradientBoostingClassifier`, 100 trees, depth 4 |
+
+Target: orders per user inside the experiment window. Features: only what was known before the experiment. Gradient boosting was
+chosen because the data is tabular with mixed numeric and categorical columns (a judgement; no other model family was
+benchmarked here). The settings are fixed, not tuned. No deep learning is used in this project.
+
+### Why the numbers can be trusted (leakage and honesty controls)
+- **No future information.** Features come only from before the experiment starts; a test fails if an outcome column, the treatment flag or any answer-key column ever becomes a feature.
+- **Cross-fitting.** Every user is scored by a model that never trained on that user, so a model is never graded on its own training data.
+- **Scoring on randomised data.** Model quality is measured with inverse-propensity weights on the randomised experiment, not by trusting predicted uplift.
+- **Honest profit cut-off.** The "treat the top X%" threshold is chosen on one random half of the users and scored on the other half.
+- **Repeatability.** Fixed row order and seeds, plus a 10-seed analysis, so one lucky run cannot be quoted.
+- **The answer key is for judging only.** It is joined in for diagnostics and one labelled reference row; the scorecard test builds the decisions from a database that has no answer-key tables at all.
+- **Known limits.** The main data is simulated, the profit figures use assumed unit economics, hyper-parameters were not tuned, and none of this says anything about performance at production scale.
+
 ## Structure
 ```
 .github/workflows/ci.yml   runs the test-suite on every push
 app/                       Streamlit results viewer (reads artifacts/)
 artifacts/                 result tables and charts
 data/                      git-ignored: Parquet warehouse, Criteo sample
-assets/                    architecture diagram
-docs/                      decision memos, diagram source, project guide
+assets/                    architecture and data-flow diagrams
+docs/                      decision memos, diagram sources, deployment guide, project guide
 notebooks/                 thin result notebooks that call src/
 sql/  schema/ staging/ marts/ analysis/
 src/  simulation/ warehouse/ experiments/ targeting/ criteo/
@@ -42,7 +86,7 @@ tests/                     mirrors src/, plus one test per SQL query
 ```
 
 ## Results viewer
-`app/streamlit_app.py` has 12 sections: overview, decision scorecard (with the reason for every call), decision memos, verdicts, novelty and overlap, revenue tails, power, peeking, multiple testing, uplift targeting, platform validation and the Criteo check. It reads only the files in `artifacts/` and `docs/memos/`. Run it locally with `streamlit run app/streamlit_app.py`. Live demo: not deployed yet.
+`app/streamlit_app.py` has 12 sections: overview, decision scorecard (with the reason for every call), decision memos, verdicts, novelty and overlap, revenue tails, power, peeking, multiple testing, uplift targeting, platform validation and the Criteo check. It reads only the files in `artifacts/` and `docs/memos/`. Run it locally with `streamlit run app/streamlit_app.py`. Live demo: see the link at the top of this file.
 
 ## Quick start
 ```bash

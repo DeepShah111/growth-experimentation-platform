@@ -30,3 +30,20 @@ def test_learners_find_the_responding_group():
     for kind in "STX":
         u = fit_predict(kind, X, y, t, X, [False])
         assert u[x == 1].mean() > u[x == 0].mean() + 0.5, kind
+
+
+def test_design_matrix_uses_only_the_eight_pre_experiment_features():
+    """Leakage guard: outcomes, the treatment flag and anything from the answer key must never become model features."""
+    import numpy as np
+    import pandas as pd
+    from src.targeting.uplift import CAT, NUM, design_matrix
+    n = 50
+    d = pd.DataFrame({c: np.arange(n, dtype=float) for c in NUM})
+    for c in CAT:
+        d[c] = np.where(np.arange(n) % 2 == 0, "a", "b")
+    for leak in ("orders_in", "revenue_in", "variant", "true_relative_lift", "segment", "user_id"):
+        d[leak] = np.arange(n, dtype=float)
+    X, cat_mask = design_matrix(d)
+    assert X.shape == (n, len(NUM) + len(CAT)) == (n, 8) and len(cat_mask) == 8
+    assert set(NUM) | set(CAT) == {"orders_pre", "revenue_pre", "sessions_pre", "days_since_signup", "is_new", "device", "channel", "city"}
+    assert not any(c.endswith("_in") for c in NUM + CAT)                 # nothing measured after assignment
