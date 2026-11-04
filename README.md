@@ -86,7 +86,13 @@ tests/                     mirrors src/, plus one test per SQL query
 ```
 
 ## Results viewer
-`app/streamlit_app.py` has 12 sections: overview, decision scorecard (with the reason for every call), decision memos, verdicts, novelty and overlap, revenue tails, power, peeking, multiple testing, uplift targeting, platform validation and the Criteo check. It reads only the files in `artifacts/` and `docs/memos/`. Run it locally with `streamlit run app/streamlit_app.py`. Live demo: see the link at the top of this file.
+`app/streamlit_app.py` is a guided tour of the project in 11 sections, with plain-English explanations and interactive charts instead of raw tables:
+**Overview** (the three questions and the headline numbers), **How it works** (architecture and models), **SQL layer** (pick a query, see the SQL and its result),
+**Decision scorecard** (every experiment's lift, the call, and the reasons), **Trust checks** (sample-ratio, naive vs adjusted vs truth, data quality),
+**Statistics lab** (power, peeking, many experiments, novelty and interaction, revenue tails), **Who gets the offer?** (models, who benefits, an interactive
+profit calculator, stability across seeds), **Real data (Criteo)**, **Platform validation**, **Decision memos** and **Limits & honesty**.
+It reads only the files in `artifacts/`, `sql/`, `assets/` and `docs/memos/`. Run it locally with `streamlit run app/streamlit_app.py`.
+Live demo: see the link at the top of this file.
 
 ## Quick start
 ```bash
@@ -292,7 +298,7 @@ and a boosted model predicts treatment from features with AUC 0.5095 (0.5 = none
 | naive difference | +1.15 (CI half-width 0.11) |
 | regression-adjusted (Lin) | +0.84 (0.10) |
 | doubly-robust AIPW (boosted, cross-fitted, estimated propensity) | +0.83 (0.09) |
-The two adjusted estimators agree with each other and sit ~0.3 points (27%) below the naive one, whose value lies
+The two adjusted estimators agree with each other and sit ~0.3 points (27% to 28%) below the naive one, whose value lies
 outside the AIPW interval. For conversion the three agree within noise (naive +0.124, Lin +0.100, AIPW +0.108 +- 0.027).
 The cause is not tested here (Criteo describes the file as assembled from several incrementality tests).
 Only ~3.6% of treated users actually saw an ad, so effects are per user assigned, not per ad seen.

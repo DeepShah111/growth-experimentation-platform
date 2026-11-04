@@ -47,3 +47,15 @@ def test_design_matrix_uses_only_the_eight_pre_experiment_features():
     assert X.shape == (n, len(NUM) + len(CAT)) == (n, 8) and len(cat_mask) == 8
     assert set(NUM) | set(CAT) == {"orders_pre", "revenue_pre", "sessions_pre", "days_since_signup", "is_new", "device", "channel", "city"}
     assert not any(c.endswith("_in") for c in NUM + CAT)                 # nothing measured after assignment
+
+
+def test_profit_curve_frame_keeps_the_exact_peak_and_the_treat_everyone_endpoint():
+    import numpy as np
+    from src.targeting.uplift import profit_curve_frame
+    n = 1000
+    profit = np.r_[np.linspace(0, 50, 333), np.linspace(50, -80, 667)].astype(float)      # peak somewhere not on the 200-step grid
+    profit[417] = 80.0                                                                       # a spike that thinning would miss
+    c = profit_curve_frame(profit, n, step=200)
+    assert c.fraction_treated.iloc[-1] == 1.0 and c.profit_inr.iloc[-1] == profit[-1]        # treat-everyone end point present
+    assert c.profit_inr.max() == profit.max() == 80.0                                         # exact peak present
+    assert c.fraction_treated.is_monotonic_increasing and len(c) < 20                          # still thinned

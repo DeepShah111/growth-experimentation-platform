@@ -16,11 +16,12 @@ The app (`app/streamlit_app.py`) only reads the small files in `artifacts/` and 
 
 ## Check the live link (do all of these)
 - [ ] The URL opens in a private/incognito window without signing in.
-- [ ] The sidebar shows 12 sections and the **Overview** page loads.
-- [ ] **Decision scorecard** shows the coloured table and counts (3 SHIP, 1 ITERATE, 4 INCONCLUSIVE, 1 DO NOT TRUST), and the "Why?" dropdown changes the reasons.
-- [ ] **Decision memos** shows both memos.
-- [ ] **Novelty & overlap**, **Revenue tails**, **Uplift targeting**, **Platform validation** and **Real data (Criteo)** each show tables, not "not found" messages.
-- [ ] No red error box on any page.
+- [ ] The sidebar shows 11 sections and the **Overview** page loads with four headline numbers and a coloured chart.
+- [ ] **Decision scorecard**: four count boxes (3 SHIP, 1 ITERATE, 4 INCONCLUSIVE, 1 DO NOT TRUST), the interval chart, and the "Why did it decide that?" dropdown changes the reasons.
+- [ ] **SQL layer**: every query in the dropdown shows SQL code on the left and a chart on the right (the last one, the per-user table, shows code and a note).
+- [ ] **Who gets the offer?**, tab "Does it pay?": moving the two sliders changes the profit curve and the numbers above it.
+- [ ] **Decision memos** shows both memos; **Real data (Criteo)** and **Platform validation** show charts, not "not found" messages.
+- [ ] No red error box on any page, and no page says a file "was not found in artifacts/".
 
 ## Then add the link everywhere
 - In `README.md`, replace `https://YOUR-APP-NAME.streamlit.app` (it appears twice on the first lines) with your real URL, commit and push.

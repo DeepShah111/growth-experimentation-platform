@@ -34,10 +34,10 @@ It is a prototype on 100,000 simulated users. It is not a production system.
 | `sql/staging/` | one trustworthy row per event (duplicates removed, late events flagged) |
 | `sql/marts/` | per-user tables used by the statistics code |
 | `sql/analysis/` | 11 reports: funnel, retention, sessionization, window functions, top-N, RFM, streaks, data quality, SRM, overlap, interaction |
-| `tests/` | 80 tests (2 of them test the app and need streamlit installed); each SQL query is checked against a hand-computed answer |
+| `tests/` | 89 tests (the app tests need streamlit and altair installed); each SQL query is checked against a hand-computed answer |
 | `docs/memos/` | two filled decision memos: ship (exp_001) and targeting (exp_008) |
 | `notebooks/` | two readable result notebooks |
-| `app/` | Streamlit viewer with 12 sections (scorecard, memos, validation, ...); not deployed yet |
+| `app/` | Streamlit guided tour with 11 sections and interactive charts (`streamlit_app.py` = pages and wording, `charts.py` = chart builders); not deployed yet |
 | `assets/`, `docs/*.dot` | the system diagram, the data-and-model-flow diagram and their sources |
 | `docs/DEPLOYMENT.md` | how to deploy the app and check the live link |
 | `.github/workflows/ci.yml` | runs the tests on every push to GitHub (not tried yet: nothing is pushed) |

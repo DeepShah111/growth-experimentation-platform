@@ -38,6 +38,12 @@ CAT = ["device", "channel", "city"]
 
 
 # ------------------------------------------------------------------------------- data
+def profit_curve_frame(profit: np.ndarray, n: int, step: int = 200) -> pd.DataFrame:
+    """Thin the profit curve for plotting, but ALWAYS keep the exact peak and the 'treat everyone' end point."""
+    keep = np.unique(np.r_[np.arange(0, n, step), int(np.argmax(profit)), n - 1])
+    return pd.DataFrame({"fraction_treated": (keep + 1) / n, "profit_inr": profit[keep]})
+
+
 def load(exp_id: str) -> tuple[pd.DataFrame, np.ndarray]:
     con = duckdb.connect(str(DB_PATH), read_only=True)
     d = con.execute((SQL_DIR / "marts" / "experiment_user_metrics.sql").read_text(), {"exp_id": exp_id}).df()
@@ -215,7 +221,7 @@ def main(exp_id: str = "exp_008") -> None:
     print(f"  treat everyone: INR {treat_all:,.0f}")
     print(f"  treat top {best_k / n:.0%} by {best}: INR {profit[best_k - 1]:,.0f}")
     print("  (optimistic: the best cut-off is picked on the same data it is scored on; confirm on a fresh holdout)")
-    pd.DataFrame({"fraction_treated": k / n, "profit_inr": profit}).iloc[::200].to_csv(ART / f"uplift_profit_curve_{tag}.csv", index=False)
+    profit_curve_frame(profit, n).to_csv(ART / f"uplift_profit_curve_{tag}.csv", index=False)
     fig, ax = plt.subplots(figsize=(7, 4.3))
     ax.plot(k / n, profit); ax.axhline(0, color="k", lw=0.6)
     ax.set_xlabel("fraction of users treated"); ax.set_ylabel("estimated profit (INR)")
