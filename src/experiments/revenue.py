@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import DB_PATH, ROOT, SQL_DIR
-from src.experiments.stats_utils import cuped_adjust
+from src.experiments.stats_utils import cuped_adjust, lift_delta
 
 
 def tail_profile(y: np.ndarray) -> dict:
@@ -40,10 +40,7 @@ def winsorize(y: np.ndarray, cap: float) -> np.ndarray:
     return np.minimum(y, cap)
 
 
-def _ratio_delta(yt: np.ndarray, yc: np.ndarray) -> tuple[float, float]:
-    mt, mc = yt.mean(), yc.mean()
-    se_t, se_c = yt.std(ddof=1) / np.sqrt(len(yt)), yc.std(ddof=1) / np.sqrt(len(yc))
-    return mt / mc - 1, 1.96 * np.sqrt((se_t / mc) ** 2 + (mt * se_c / mc**2) ** 2)
+_ratio_delta = lift_delta   # same delta-method interval as everywhere else
 
 
 def bootstrap_ratio(yt: np.ndarray, yc: np.ndarray, reps: int = 1000, seed: int = 11) -> tuple[float, float]:

@@ -19,34 +19,11 @@ import argparse
 import numpy as np
 import pandas as pd
 
-from src.config import ROOT
-from src.targeting.uplift import COST_PER_TREATED, VALUE_PER_ORDER, cross_fit, ipw_effect, load, qini_area
+from src.config import COST_PER_TREATED, ROOT, VALUE_PER_ORDER
+from src.engine.uplift_core import holdout_profit, ipw_effect, qini_area
+from src.targeting.uplift import cross_fit, load
 
 LEARNERS = ["S-learner", "T-learner", "X-learner"]
-
-
-def holdout_profit(score: np.ndarray, y: np.ndarray, t: np.ndarray, rng: np.random.Generator,
-                   value: float = VALUE_PER_ORDER, cost: float = COST_PER_TREATED) -> dict:
-    """Pick the best cut-off on half A, score it on half B. All profits are per 1,000 users."""
-    n = len(score)
-    perm = rng.permutation(n)
-    a, b = perm[: n // 2], perm[n // 2:]
-    tau_a, tau_b = ipw_effect(y[a], t[a]), ipw_effect(y[b], t[b])
-
-    order_a = np.argsort(-score[a], kind="stable")
-    k = np.arange(1, len(a) + 1)
-    profit_a = value * np.cumsum(tau_a[order_a]) - cost * k
-    k_star = int(np.argmax(profit_a)) + 1
-    threshold = score[a][order_a][k_star - 1]                       # treat users scoring at or above this
-
-    treated_b = score[b] >= threshold
-    profit_b = value * tau_b[treated_b].sum() - cost * treated_b.sum()
-    per1000 = lambda x, m: float(x / m * 1000)                      # noqa: E731
-    return {"share_treated_chosen_on_A": k_star / len(a),
-            "share_treated_on_B": float(treated_b.mean()),
-            "profit_in_sample": per1000(profit_a[k_star - 1], len(a)),
-            "profit_holdout": per1000(profit_b, len(b)),
-            "treat_everyone_holdout": per1000(value * tau_b.sum() - cost * len(b), len(b))}
 
 
 def run_seeds(d: pd.DataFrame, t: np.ndarray, seeds: list[int]) -> tuple[pd.DataFrame, pd.DataFrame]:

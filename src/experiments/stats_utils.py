@@ -118,3 +118,41 @@ def benjamini_hochberg(p: np.ndarray, alpha: float = 0.05) -> np.ndarray:
 def bonferroni(p: np.ndarray, alpha: float = 0.05) -> np.ndarray:
     p = np.asarray(p, float)
     return p <= alpha / len(p)
+
+
+# ------------------------------------------------------------------- lift, adjustment, money
+def lift_delta(y_t: np.ndarray, y_c: np.ndarray) -> tuple[float, float]:
+    """Relative lift of treatment over control and the 95% half-width of its interval (delta method)."""
+    mt, mc = y_t.mean(), y_c.mean()
+    se_t, se_c = y_t.std(ddof=1) / np.sqrt(len(y_t)), y_c.std(ddof=1) / np.sqrt(len(y_c))
+    with np.errstate(divide="ignore", invalid="ignore"):                 # a zero control mean gives inf/nan, not a crash
+        return float(mt / mc - 1), float(1.96 * np.sqrt((se_t / mc) ** 2 + (mt * se_c / mc**2) ** 2))
+
+
+def regression_adjust(y: np.ndarray, X: np.ndarray) -> tuple[np.ndarray, float]:
+    """Multi-covariate CUPED: y - (X - mean(X)) @ theta, theta = OLS of y on X (arms pooled).
+
+    The adjustment has mean zero in expectation, so the lift stays unbiased while the variance shrinks.
+    Returns (adjusted outcome, R^2 of the covariates). With one covariate this equals `cuped_adjust`.
+    """
+    y = np.asarray(y, float)
+    X = np.asarray(X, float)
+    if X.ndim == 1:
+        X = X[:, None]
+    Xc = X - X.mean(0)
+    keep = Xc.std(0) > 0                                    # constant columns carry no information
+    if not keep.any() or y.std() == 0:
+        return y.copy(), 0.0
+    Xc = Xc[:, keep]
+    theta, *_ = np.linalg.lstsq(Xc, y - y.mean(), rcond=None)
+    fitted = Xc @ theta
+    r2 = float(np.var(fitted) / np.var(y))
+    return y - fitted, min(max(r2, 0.0), 0.999999)
+
+
+def net_value_per_user(y_treat: np.ndarray, y_ctrl: np.ndarray, value_per_order: float, cost_per_treated: float):
+    """Profit per user of rolling the change out to everyone: value x (extra orders per user) - cost. Welch 95% CI."""
+    d = y_treat.mean() - y_ctrl.mean()
+    se = np.sqrt(y_treat.var(ddof=1) / len(y_treat) + y_ctrl.var(ddof=1) / len(y_ctrl))
+    return value_per_order * d - cost_per_treated, value_per_order * (d - 1.96 * se) - cost_per_treated, \
+        value_per_order * (d + 1.96 * se) - cost_per_treated

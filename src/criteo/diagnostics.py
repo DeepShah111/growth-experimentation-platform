@@ -24,7 +24,7 @@ from sklearn.model_selection import KFold
 
 from src.config import ROOT
 from src.criteo.validate import balance_table, cross_fit_scores, diff_in_rates, lin_adjusted_effect, uplift_report
-from src.targeting.uplift import SEED, ipw_effect
+from src.engine.uplift_core import SEED, ipw_effect
 
 ART = ROOT / "artifacts"
 CLIP = (0.02, 0.98)                                   # keeps AIPW weights from exploding
@@ -71,7 +71,6 @@ def run(path: str, max_rows: int | None = None, out_dir=ART) -> dict:
 
     bal = balance_table(df[feats], t).sort_values("smd", key=abs, ascending=False)
     bal.to_csv(out_dir / "criteo_balance_sorted.csv")
-    n = len(df)
     se_smd = np.sqrt(1 / (t == 1).sum() + 1 / (t == 0).sum())
     print(f"[1] Feature SMDs, largest first. Expected size under perfect randomisation: about +-{se_smd:.4f} (1 SE).")
     print(bal.head(6).to_string())

@@ -327,3 +327,61 @@ def dq_chart(df: pd.DataFrame) -> alt.Chart:
     long["problem"] = long.problem.map({"duplicate_rate": "duplicate events removed", "late_rate": "events arriving > 1 day late"})
     return alt.Chart(long).mark_line().encode(x=alt.X("day:T", title=None), y=alt.Y("rate:Q", title="Share of events", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 0.04])),
                                               color=alt.Color("problem:N", title=None, scale=alt.Scale(range=[AMBER, RED]), legend=alt.Legend(orient="bottom")), tooltip=["day:T", "problem", alt.Tooltip("rate:Q", format=".2%")]).properties(height=H)
+
+
+# ------------------------------------------------------------------------------------------ live platform pages
+def arms_forest_chart(arms: pd.DataFrame, bar: float = 0.03) -> alt.Chart:
+    """One interval per treatment arm vs control, coloured by the platform's decision."""
+    d = arms.copy()
+    present = [k for k in DECISION_COLOUR if k in set(d.decision)]
+    colour = alt.Color("decision:N", scale=alt.Scale(domain=present, range=[DECISION_COLOUR[k] for k in present]),
+                       legend=alt.Legend(title="Decision", orient="bottom"))
+    y = alt.Y("arm:N", sort=list(d.arm), title=None)
+    tip = ["arm", "decision", alt.Tooltip("lift:Q", format="+.1%"), alt.Tooltip("ci_low:Q", format="+.1%"), alt.Tooltip("ci_high:Q", format="+.1%")]
+    rng = alt.Chart(d).mark_rule(strokeWidth=3).encode(x=alt.X("ci_low:Q", title="Relative lift vs control (95% interval)", axis=alt.Axis(format="%")),
+                                                       x2="ci_high:Q", y=y, color=colour, tooltip=tip)
+    pts = alt.Chart(d).mark_point(filled=True, size=120).encode(x="lift:Q", y=y, color=colour, tooltip=tip)
+    return (_rule(0, "#999", (0, 0)) + _rule(bar, GREEN, (5, 4)) + rng + pts).properties(height=max(110, 52 * len(d) + 50))
+
+
+def live_power_chart(df: pd.DataFrame, target_lift: float | None = None) -> alt.Chart:
+    line = alt.Chart(df).mark_line(color=BLUE, strokeWidth=3).encode(
+        x=alt.X("true_lift:Q", title="True relative lift", axis=alt.Axis(format="%")),
+        y=alt.Y("power:Q", title="Chance of detecting it (power)", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 1])),
+        tooltip=[alt.Tooltip("true_lift:Q", format=".1%"), alt.Tooltip("power:Q", format=".0%")])
+    layers = [_hrule(0.8, GREEN), line]
+    if target_lift is not None:
+        layers.append(_rule(target_lift, AMBER, (5, 4)))
+    return alt.layer(*layers).properties(height=H)
+
+
+def days_chart(df: pd.DataFrame) -> alt.Chart:
+    line = alt.Chart(df).mark_line(color=PURPLE, strokeWidth=3, point=True).encode(
+        x=alt.X("detectable_lift:Q", title="Smallest relative lift you want to detect", axis=alt.Axis(format="%")),
+        y=alt.Y("days:Q", title="Days of traffic needed", scale=alt.Scale(type="log")),
+        tooltip=[alt.Tooltip("detectable_lift:Q", format=".1%"), "days", alt.Tooltip("n_per_arm:Q", format=",")])
+    return line.properties(height=H)
+
+
+def live_profit_chart(d: pd.DataFrame, currency: str = "") -> alt.Chart:
+    """Profit vs share treated; green dot = best reach, red diamond = treat everyone. Columns: fraction_treated, profit."""
+    best = d.loc[d.profit.idxmax()]
+    line = alt.Chart(d).mark_line(color=BLUE, strokeWidth=3).encode(
+        x=alt.X("fraction_treated:Q", title="Share of users treated (best-scored first)", axis=alt.Axis(format="%")),
+        y=alt.Y("profit:Q", title=f"Estimated profit ({currency or 'units'}, this sample)", axis=alt.Axis(format="~s")),
+        tooltip=[alt.Tooltip("fraction_treated:Q", format=".0%"), alt.Tooltip("profit:Q", format=",.0f")])
+    mk = alt.Chart(pd.DataFrame([best])).mark_point(filled=True, size=160, color=GREEN).encode(x="fraction_treated:Q", y="profit:Q")
+    end = alt.Chart(pd.DataFrame([d.iloc[-1]])).mark_point(filled=True, size=160, color=RED, shape="diamond").encode(x="fraction_treated:Q", y="profit:Q")
+    return alt.layer(_hrule(0, "#999", (0, 0)), line, mk, end).properties(height=H)
+
+
+def qini_live_chart(df: pd.DataFrame) -> alt.Chart:
+    """Qini area per model with bootstrap interval. Columns: model, qini_per_1000_users, ci_low, ci_high."""
+    d = df.copy()
+    d["kind"] = np.where(d.model.str.endswith("-learner"), "ML model", "baseline")
+    y = alt.Y("model:N", sort=list(d.model), title=None)
+    col = alt.Color("kind:N", scale=alt.Scale(domain=["ML model", "baseline"], range=[BLUE, GREY]), legend=alt.Legend(title=None, orient="bottom"))
+    err = alt.Chart(d).mark_rule(strokeWidth=3).encode(y=y, x=alt.X("ci_low:Q", title="Extra outcome per 1,000 users vs the average user (95% interval)"), x2="ci_high:Q", color=col)
+    pts = alt.Chart(d).mark_point(filled=True, size=130).encode(y=y, x="qini_per_1000_users:Q", color=col,
+                                                                 tooltip=["model", alt.Tooltip("qini_per_1000_users:Q", format=".1f")])
+    return (_rule(0, "#999", (0, 0)) + err + pts).properties(height=44 * len(d) + 60)

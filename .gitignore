@@ -5,3 +5,8 @@ __pycache__/
 *.duckdb
 *.parquet
 .ipynb_checkpoints/
+
+# tiny sample files the deployed app needs ARE tracked
+!sample_data/
+!sample_data/*.parquet
+!sample_data/*.csv.gz

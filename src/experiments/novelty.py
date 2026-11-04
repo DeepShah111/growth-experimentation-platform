@@ -18,6 +18,7 @@ import pandas as pd
 from scipy import stats
 
 from src.config import DB_PATH, ROOT, SQL_DIR
+from src.experiments.stats_utils import lift_delta
 
 
 def usable_weeks(df: pd.DataFrame, min_users: int = 500) -> list[int]:
@@ -35,12 +36,10 @@ def weekly_effects(df: pd.DataFrame, min_users: int = 500) -> pd.DataFrame:
         t = g.loc[g.variant == "treatment", "n_orders"].to_numpy(float)
         c = g.loc[g.variant == "control", "n_orders"].to_numpy(float)
         mt, mc = t.mean(), c.mean()
-        se_t, se_c = t.std(ddof=1) / np.sqrt(len(t)), c.std(ddof=1) / np.sqrt(len(c))
-        lift = mt / mc - 1
-        se_rel = np.sqrt((se_t / mc) ** 2 + (mt * se_c / mc**2) ** 2)      # delta method
+        lift, half = lift_delta(t, c)                                        # delta method
         rows.append({"exposure_week": int(wk), "n_treat": len(t), "n_ctrl": len(c),
                      "rate_treat": mt, "rate_ctrl": mc, "abs_effect": mt - mc,
-                     "rel_lift": lift, "ci_half": 1.96 * se_rel,
+                     "rel_lift": lift, "ci_half": half,
                      "p_value": stats.ttest_ind(t, c, equal_var=False).pvalue})
     return pd.DataFrame(rows)
 

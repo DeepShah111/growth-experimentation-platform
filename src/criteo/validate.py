@@ -27,7 +27,7 @@ from sklearn.model_selection import KFold
 
 from src.config import ROOT
 from src.experiments.stats_utils import required_n_per_arm
-from src.targeting.uplift import SEED, fit_predict, gain_curve, ipw_effect, qini_area
+from src.engine.uplift_core import SEED, fit_predict, gain_curve, ipw_effect, qini_area
 
 ART = ROOT / "artifacts"
 

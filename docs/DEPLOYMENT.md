@@ -1,34 +1,55 @@
-# Deploying the results viewer (Streamlit Community Cloud, free)
+# Deploying the platform: Streamlit app + REST API
 
-The app (`app/streamlit_app.py`) only reads the small files in `artifacts/` and `docs/memos/`, so it needs no database and no data.
+Two things go live. The **Streamlit app** (interactive pages) on Streamlit Community Cloud, and the **REST API** (Docker) on a free
+container host such as a Hugging Face Docker Space. Both run the same code in `src/engine/`.
 
-## Before you start
-- The repository must be on GitHub, and it must be **public** for the free tier.
-- `artifacts/` and `docs/` must be committed (they are: only `data/` is git-ignored).
-- Dependencies are read from `app/requirements.txt`: Streamlit Community Cloud looks in the app's own folder first and then in the repo root.
+## 0. Before anything
+- Push the repository to GitHub (public for the free tiers). Commit `artifacts/`, `docs/`, `sql/`, `assets/` and **`sample_data/`**
+  (about 0.5 MB: `hillstrom.csv.gz`; the Criteo sample is optional, see below).
+- Run the tests: `python -m pytest` (167 tests; they need no internet and no big files).
+- Optional Criteo page: `python -m src.criteo.prepare` then `python -m src.engine.make_samples` creates `sample_data/criteo_100k.parquet`
+  (about 2 MB). Commit it. Without it the app simply hides the Criteo option.
+- Hillstrom data: the committed copy is the public challenge file published by Kevin Hillstrom (MineThatData, 2008). Keep the attribution
+  in the README. If you prefer not to redistribute it, delete `sample_data/hillstrom.csv.gz` and run `python -m src.engine.make_samples`
+  locally; the deployed app will then hide the Hillstrom option.
 
-## Steps
-1. Go to share.streamlit.io and sign in with GitHub. Allow access to your repository if asked.
-2. Click **Create app** (or **New app**) and choose the option to deploy from an existing GitHub repo.
-3. Repository: `<your-username>/growth-experimentation-platform`. Branch: `main`. **Main file path: `app/streamlit_app.py`**.
-4. If a custom app URL (subdomain) field is offered, choose a short readable name, for example `growth-experimentation-platform`.
-5. Click **Deploy**. The first build takes a few minutes; open **Manage app** to watch the logs.
+## 1. Streamlit app (Community Cloud, free)
+1. share.streamlit.io, sign in with GitHub, **Create app**.
+2. Repository `<you>/growth-experimentation-platform`, branch `main`, **Main file path `app/streamlit_app.py`**.
+3. Dependencies come from `app/requirements.txt` (it already lists numpy, scipy, scikit-learn, duckdb, pyarrow, altair).
+4. Deploy. The first start builds a 12,000-user demo warehouse in a few seconds (cached afterwards).
 
-## Check the live link (do all of these)
-- [ ] The URL opens in a private/incognito window without signing in.
-- [ ] The sidebar shows 11 sections and the **Overview** page loads with four headline numbers and a coloured chart.
-- [ ] **Decision scorecard**: four count boxes (3 SHIP, 1 ITERATE, 4 INCONCLUSIVE, 1 DO NOT TRUST), the interval chart, and the "Why did it decide that?" dropdown changes the reasons.
-- [ ] **SQL layer**: every query in the dropdown shows SQL code on the left and a chart on the right (the last one, the per-user table, shows code and a note).
-- [ ] **Who gets the offer?**, tab "Does it pay?": moving the two sliders changes the profit curve and the numbers above it.
-- [ ] **Decision memos** shows both memos; **Real data (Criteo)** and **Platform validation** show charts, not "not found" messages.
-- [ ] No red error box on any page, and no page says a file "was not found in artifacts/".
+### Check the live link
+- [ ] Opens in a private window without signing in.
+- [ ] **Analyze an experiment** shows Hillstrom with two decision cards and an interval chart. Switch Outcome to `spend`, raise "Cost of
+      treating one user" to 500: the decision turns from SHIP to ITERATE.
+- [ ] Dataset = Simulated app, Experiment = `exp_006`: the card says DO NOT TRUST.
+- [ ] **Plan an experiment**: halving the lift roughly quadruples users per arm.
+- [ ] **Peeking simulator**: 10 looks gives about 19% false wins, 1 look about 5%.
+- [ ] **Live targeting** loads in a few seconds and shows a plain-language verdict.
+- [ ] **SQL workbench**: every project query runs; the pure-SQL tab shows "SQL and Python agree"; `DROP TABLE users` is refused.
+- [ ] The older pages (scorecard, memos, validation) still render.
 
-## Then add the link everywhere
-- In `README.md`, replace `https://YOUR-APP-NAME.streamlit.app` (it appears twice on the first lines) with your real URL, commit and push.
-- On GitHub, click the gear next to **About**, paste the URL into **Website**, and add topics such as `ab-testing`, `causal-inference`, `uplift-modeling`, `duckdb`, `sql`.
-- Put the URL on your resume next to the project name.
+## 2. REST API (Docker)
+Local:
+```
+docker build -t gep-api .
+docker run -p 8000:8000 gep-api
+curl http://127.0.0.1:8000/health
+# interactive docs: http://127.0.0.1:8000/docs
+```
+Hugging Face Docker Space: create a Space with SDK = Docker, push this repository (or the files the Dockerfile copies), and set the
+Space's app port to 8000. Any host that runs a container works the same way; the image reads the port from `$PORT`.
+
+CI (`.github/workflows/ci.yml`) runs the tests on Python 3.11 and 3.12, lints, builds the image and smoke-tests `/health` and `/plan`.
+
+## 3. Link everything
+- README: replace both `YOUR-APP-NAME` links with the real app and API URLs, commit, push.
+- GitHub About: add the app URL as Website; topics `ab-testing`, `causal-inference`, `uplift-modeling`, `duckdb`, `sql`, `fastapi`.
+- Resume: put the app URL next to the project name.
 
 ## Things to know
-- Free apps go to sleep after a period without visitors (community answers say about 12 hours). A visitor sees "this app has gone to sleep"; clicking the wake-up button restarts it in about a minute. **Open your own link a few minutes before sending it to a recruiter.**
-- If a page shows "not found" for a file, the file is missing from the repo's `artifacts/` folder: check it on GitHub.
-- If the build fails, open the logs in **Manage app**; the usual causes are a wrong main-file path or a missing package in `app/requirements.txt`.
+- Free Streamlit apps sleep after inactivity; open your link a few minutes before sharing it. Free container hosts also cold-start.
+- The SQL box is read-only, runs with file and network access switched off, a 1 GB memory limit and a 1,000-row cap. It queries simulated data only.
+- The API caps JSON at 200,000 records and uploads at 30 MB / 1,000,000 rows. It stores nothing.
+- Uploaded data is analysed in memory and discarded. Do not upload personal data to a public demo.

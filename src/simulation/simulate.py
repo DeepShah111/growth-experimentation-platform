@@ -155,7 +155,6 @@ def simulate(cfg: SimConfig = SimConfig()) -> dict[str, pd.DataFrame]:
     for lo in range(0, cfg.n_users, cfg.chunk_users):
         hi = min(lo + cfg.chunk_users, cfg.n_users)
         sl = slice(lo, hi)
-        m = hi - lo
         sd = latent["signup_day"][sl]
 
         # ---- how many sessions each user has each day

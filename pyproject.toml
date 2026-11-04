@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F", "B006", "B008", "UP006", "I001"]
+ignore = ["E741"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "api"]

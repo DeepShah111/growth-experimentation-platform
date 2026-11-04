@@ -214,9 +214,10 @@ def test_srm_counts_and_overlap_detector():
 def test_weekly_retention_cohort_math():
     users = pd.DataFrame({"user_id": [1, 2, 3], "signup_date": pd.to_datetime(["2026-01-06", "2026-01-07", "2026-01-14"]).date,
                           "is_new": [True, True, False], "city": ["x"] * 3, "device": ["ios"] * 3, "channel": ["paid"] * 3})
-    sess = pd.DataFrame({"session_id": [1, 2, 3, 4], "user_id": [1, 1, 2, 3],
-                         "session_start": pd.to_datetime(["2026-01-06 10:00", "2026-01-13 10:00", "2026-01-07 10:00", "2026-01-14 10:00"]),  # user 3: not new, active in own signup week
-                         "duration_sec": [1] * 4, "device": ["ios"] * 4})
+    sess = pd.DataFrame({"session_id": [1, 2, 3, 4, 5], "user_id": [1, 1, 2, 3, 3],
+                         "session_start": pd.to_datetime(["2026-01-06 10:00", "2026-01-13 10:00", "2026-01-07 10:00", "2026-01-14 10:00",
+                                                          "2026-01-21 10:00"]),  # user 3: not new; its last session ends the data in week 19 Jan
+                         "duration_sec": [1] * 5, "device": ["ios"] * 5})
     r = run_query(make_con(users=users, sessions=sess), "weekly_retention")
     assert list(r.cohort_size.unique()) == [2] and r.cohort_week.nunique() == 1   # the not-new user forms no cohort
     assert list(r.weeks_since_signup) == [0, 1] and list(r.active_users) == [2, 1] and list(r.retention) == [1.0, 0.5]
@@ -283,3 +284,39 @@ def test_experiment_user_metrics_rows_come_out_sorted_by_user_id():
     df = con.execute((SQL_DIR / "marts" / "experiment_user_metrics.sql").read_text(), {"exp_id": "exp_a"}).df()
     assert list(df.user_id) == sorted(ids)
     assert df.loc[df.user_id == 3, "orders_in"].iloc[0] == 1 and df.loc[df.user_id == 3, "sessions_pre"].iloc[0] == 1
+
+
+def test_weekly_retention_ignores_weeks_that_have_not_happened_yet_and_counts_zero_explicitly():
+    """Two cohorts. Data ends in the week of 26 Jan, so cohort A (week of 5 Jan) can be judged at weeks 0-2
+    but cohort B (week of 19 Jan) only at week 0. Week 1 of cohort A has NO active users and must show as 0, not vanish."""
+    users = pd.DataFrame({"user_id": [1, 2, 3, 4], "signup_date": pd.to_datetime(["2026-01-06", "2026-01-07", "2026-01-20", "2026-01-21"]).date,
+                          "is_new": [True, True, True, False], "city": ["x"] * 4, "device": ["ios"] * 4, "channel": ["paid"] * 4})
+    sess = pd.DataFrame({"session_id": [1, 2, 3, 4, 5], "user_id": [1, 2, 1, 3, 4],
+                         "session_start": pd.to_datetime(["2026-01-06 10:00", "2026-01-07 10:00", "2026-01-20 10:00", "2026-01-20 11:00",
+                                                          "2026-01-27 10:00"]),     # user 4 (not new) ends the data in the week of 26 Jan
+                         "duration_sec": [1] * 5, "device": ["ios"] * 5})
+    r = run_query(make_con(users=users, sessions=sess), "weekly_retention")
+    a = r[r.cohort_week.astype(str) == "2026-01-05"].set_index("weeks_since_signup")
+    b = r[r.cohort_week.astype(str) == "2026-01-19"]
+    assert list(a.index) == [0, 1, 2] and list(a.active_users) == [2, 0, 1] and list(a.retention) == [1.0, 0.0, 0.5]
+    assert list(b.weeks_since_signup) == [0]                                       # later weeks have not happened yet
+
+
+def test_rfm_users_with_identical_values_get_identical_scores():
+    """10 buyers: 8 with exactly 1 order of the same value and recency, 2 clearly better. NTILE would split the 8 across
+    different scores by user_id; rank-based scoring must treat them as the tie they are."""
+    rows, oid = [], 0
+    def add(u, day, value):
+        nonlocal oid
+        oid += 1
+        rows.append((oid, 1, u, pd.Timestamp(day) + pd.Timedelta(hours=9), 1, value, 0.0, value))
+    for u in range(1, 9):
+        add(u, "2026-01-10", 100.0)
+    for u in (9, 10):
+        for d in ("2026-02-27", "2026-02-26", "2026-02-25"):
+            add(u, d, 300.0)
+    orders = pd.DataFrame(rows, columns=["order_id", "session_id", "user_id", "order_ts", "n_items", "gross_value", "discount_pct", "order_value"])
+    r = run_query(make_con(orders=orders), "rfm_segments", {"as_of": "2026-03-01"}).set_index("segment")
+    assert r.loc["champions", "users"] == 2                    # users 9 and 10
+    assert r.loc["lost", "users"] == 8                         # all eight tied users land in ONE segment, none scattered
+    assert r.users.sum() == 10

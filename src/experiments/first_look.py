@@ -12,24 +12,16 @@ import pandas as pd
 from scipy import stats
 
 from src.config import DB_PATH, ROOT, SQL_DIR
+from src.experiments.stats_utils import cuped_adjust, lift_delta
 
 
 def rel_lift(y_t: np.ndarray, y_c: np.ndarray) -> tuple[float, float, float]:
     """Relative lift of treatment over control, a rough 95% CI half-width (delta method), p-value."""
-    mt, mc = y_t.mean(), y_c.mean()
-    se_t, se_c = y_t.std(ddof=1) / np.sqrt(len(y_t)), y_c.std(ddof=1) / np.sqrt(len(y_c))
-    lift = mt / mc - 1
-    se_rel = np.sqrt((se_t / mc) ** 2 + (mt * se_c / mc**2) ** 2)
-    return lift, 1.96 * se_rel, stats.ttest_ind(y_t, y_c, equal_var=False).pvalue
+    lift, half = lift_delta(y_t, y_c)
+    return lift, half, stats.ttest_ind(y_t, y_c, equal_var=False).pvalue
 
 
-def cuped(y: np.ndarray, x: np.ndarray) -> np.ndarray:
-    """Variance reduction with a pre-experiment covariate. Mean is preserved, so lift stays unbiased."""
-    var_x = np.var(x, ddof=1)
-    if var_x == 0:                      # no pre-period signal in this slice: nothing to adjust
-        return y.copy()
-    theta = np.cov(y, x, ddof=1)[0, 1] / var_x
-    return y - theta * (x - x.mean())
+cuped = cuped_adjust          # one implementation of CUPED for the whole project (src.experiments.stats_utils)
 
 
 def analyse(df: pd.DataFrame, metric: str, cov: str) -> dict:

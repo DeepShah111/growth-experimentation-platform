@@ -11,15 +11,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import charts as C  # noqa: E402
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT))
+import charts as C  # noqa: E402
+import live_pages as LIVE  # noqa: E402  (interactive pages: analyse / plan / peeking / targeting / SQL)
+
 ART = Path(os.environ.get("GEP_ARTIFACTS", ROOT / "artifacts"))
 MEMOS = ROOT / "docs" / "memos"
 st.set_page_config(page_title="Growth Experimentation Platform", layout="wide")
 
-PAGES = ["Overview", "How it works", "SQL layer", "Decision scorecard", "Trust checks", "Statistics lab", "Who gets the offer?",
+PAGES = ["Overview", *LIVE.PAGES, "How it works", "SQL layer", "Decision scorecard", "Trust checks", "Statistics lab", "Who gets the offer?",
          "Real data (Criteo)", "Platform validation", "Decision memos", "Limits & honesty"]
 
 
@@ -76,18 +78,36 @@ def get_row(df, col, val):
     return r.iloc[0] if len(r) else None
 
 
+# A roomier navigation panel: wider, larger labels, a clear highlight on the page you are on.
+st.markdown("""
+<style>
+section[data-testid="stSidebar"] { width: 23rem !important; min-width: 23rem !important; }
+section[data-testid="stSidebar"] > div:first-child { width: 23rem !important; }
+[data-testid="stSidebar"] h1 { font-size: 1.7rem; line-height: 1.25; padding-bottom: .4rem; }
+[data-testid="stSidebar"] div[role="radiogroup"] { gap: .2rem; }
+[data-testid="stSidebar"] div[role="radiogroup"] label { padding: .55rem .75rem; border-radius: 10px; width: 100%; }
+[data-testid="stSidebar"] div[role="radiogroup"] label p { font-size: 1.08rem; }
+[data-testid="stSidebar"] div[role="radiogroup"] label:hover { background: rgba(120, 140, 255, .14); }
+[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) { background: rgba(120, 140, 255, .26); font-weight: 600; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] { font-size: .85rem; }
+</style>
+""", unsafe_allow_html=True)
+
 st.sidebar.title("Growth Experimentation Platform")
 page = st.sidebar.radio("Section", PAGES)
-st.sidebar.caption("The main dataset is simulated (a fictional grocery-delivery app) so the true effect of every experiment is known. "
-                   "Criteo is the real-data check.")
+st.sidebar.caption("Live pages run on REAL randomised data (Hillstrom e-mail test, Criteo ads test) and on a simulated app whose true "
+                   "effects are known, so the platform can be checked against the truth.")
 
 # ================================================================================================ OVERVIEW
-if page == "Overview":
+if page in LIVE.PAGES:
+    LIVE.render(page)
+
+elif page == "Overview":
     st.title("Growth Experimentation Platform")
     st.markdown("##### Which experiment results can we trust, what should ship, and who should get the offer?")
-    st.info("A fictional grocery-delivery app has nine experiments to read and a win-back offer that costs money to send. "
-            "The data is **simulated**, so we know the true answer and can check whether the analysis finds it. "
-            "A real randomised dataset (Criteo) confirms the methods on real data.")
+    st.info("Which experiment results can be trusted, what should ship, and who should get the offer. The platform runs on **real randomised "
+            "data** (Hillstrom e-mail test, Criteo ads test) and on a **simulated grocery app with nine planted experiments**, where the true "
+            "answer is known and the analysis can be graded. Open **Analyze an experiment** to try it: change a setting and the decision changes.")
     sc, pk = scorecard(), read("peeking_false_positive_rate.csv")
     k1, k2, k3, k4 = st.columns(4)
     if sc is not None:
@@ -546,7 +566,7 @@ else:
     st.header("Limits and honesty")
     st.write("What this project does not show, stated plainly.")
     st.markdown("""
-- **The main data is simulated.** The platform's answers can be checked against the truth only because I wrote the truth. The assumptions come from weak public benchmarks. Criteo is the only real data, and it covers uplift only.
+- **The simulator is a test bench, not evidence about the real world.** Its answers can be checked against the truth only because I wrote the truth. The real randomised data are the Hillstrom e-mail test (64,000 customers, one retailer, 2008) and a sample of Criteo's ads test (anonymised features).
 - **Profit figures use assumed economics** (INR 50 per extra order, INR 3 per user shown the offer). They are not measured margins.
 - **The scorecard has known blind spots.** It reads each experiment's overall effect, so an effect that exists only for one segment (exp_005) or one that slowly fades (exp_004) can be missed.
 - **The scorecard's thresholds are choices** (a 3% worth-shipping bar, alpha levels), not facts.

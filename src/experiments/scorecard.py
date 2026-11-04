@@ -26,71 +26,15 @@ import argparse
 import duckdb
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from src.config import COST_PER_TREATED, DB_PATH, ROOT, SQL_DIR, VALUE_PER_ORDER
 from src.experiments.first_look import analyse
 from src.experiments.interaction import interaction_effect
 from src.experiments.novelty import decay_test, usable_weeks, weekly_effects
-from src.experiments.stats_utils import holm, holm_adjust, mde_rel
+from src.engine.decision import ALPHA, INTERACTION_ALPHA, MIN_EFFECT, SRM_ALPHA, TREND_ALPHA, decide  # noqa: F401  (re-exported)
+from src.experiments.stats_utils import holm, holm_adjust, mde_rel, net_value_per_user  # noqa: F401
 
-SRM_ALPHA = 0.001          # sample-ratio check: below this the split is broken
-ALPHA = 0.05               # family-wise error rate for the Holm correction
-MIN_EFFECT = 0.03          # smallest relative lift worth shipping (a business assumption)
-TREND_ALPHA = 0.05         # weekly-trend test for a fading effect
-INTERACTION_ALPHA = 0.05
 COST_PER_TREATED_USER = {"exp_008": COST_PER_TREATED}   # experiments where each treated user costs money (INR)
-
-
-def net_value_per_user(y_treat: np.ndarray, y_ctrl: np.ndarray, value_per_order: float, cost_per_treated: float):
-    """Profit per user of rolling the change out to everyone: value x (extra orders per user) - cost. Welch 95% CI."""
-    d = y_treat.mean() - y_ctrl.mean()
-    se = np.sqrt(y_treat.var(ddof=1) / len(y_treat) + y_ctrl.var(ddof=1) / len(y_ctrl))
-    return value_per_order * d - cost_per_treated, value_per_order * (d - 1.96 * se) - cost_per_treated, \
-        value_per_order * (d + 1.96 * se) - cost_per_treated
-
-
-# ---------------------------------------------------------------------------------- the decision rule
-def decide(r: dict) -> tuple[str, list[str]]:
-    """Pure function of one scorecard row. Returns (decision, reasons)."""
-    if r["srm_p"] < SRM_ALPHA:
-        return "DO NOT TRUST", [f"sample ratio mismatch (p = {r['srm_p']:.1e}): arms are {r['n_treat']:,} vs {r['n_ctrl']:,}, "
-                                "so assignment is broken and the result cannot be read"]
-    notes = []
-    if r["srm_p"] < 0.10:
-        notes.append(f"sample-ratio p = {r['srm_p']:.3f} is borderline; worth a look at the assignment code")
-    if r["significant"] and r["lift"] < 0:
-        return "DO NOT SHIP (harmful)", [f"significantly negative lift {r['lift']:+.1%} (Holm-adjusted p = {r['p_adj']:.3g})"]
-    if r["significant"]:
-        blockers = []
-        if r["guardrail_breach"]:
-            blockers.append(f"guardrail metric is significantly negative ({r['guardrail_lift']:+.1%})")
-        if r["interaction_p"] is not None and r["interaction_p"] < INTERACTION_ALPHA:
-            blockers.append(f"overlapping experiment {r['overlap_with']} interacts with it (p = {r['interaction_p']:.3f})")
-        if r["trend_p"] is not None and r["trend_slope"] < 0 and r["trend_p"] < TREND_ALPHA:
-            blockers.append(f"effect is fading week over week (trend p = {r['trend_p']:.3f}): extend and re-read")
-        if r.get("net_ci_high") is not None and not np.isnan(r["net_ci_high"]) and r["net_ci_high"] < 0:
-            blockers.append(f"the lift is real but unprofitable at the assumed economics: INR {r['net_value']:+.2f} per user "
-                            f"(95% CI {r['net_ci_low']:+.2f} to {r['net_ci_high']:+.2f}); do not ship to everyone, target a subset (see src.targeting)")
-        if blockers:
-            return "ITERATE", blockers
-        notes.insert(0, f"lift {r['lift']:+.1%} (95% CI {r['ci_low']:+.1%} to {r['ci_high']:+.1%}), Holm-adjusted p = {r['p_adj']:.3g}")
-        if r.get("net_value") is not None and not np.isnan(r["net_value"]):
-            notes.append(f"profit at the assumed economics: INR {r['net_value']:+.2f} per user (95% CI {r['net_ci_low']:+.2f} to {r['net_ci_high']:+.2f})")
-        if r["ci_low"] < MIN_EFFECT:
-            notes.append(f"the interval's low end ({r['ci_low']:+.1%}) is below the {MIN_EFFECT:.0%} worth-shipping bar")
-        if r["overlap_with"] and r["interaction_p"] is not None:
-            notes.append(f"overlaps {r['overlap_with']}; no interaction detected (p = {r['interaction_p']:.2f}), which is not proof there is none")
-        if r["latest_week_lift"] is not None and r["latest_week_ci_half"] is not None and r["latest_week_lift"] - r["latest_week_ci_half"] <= 0:
-            notes.append(f"latest full week lift {r['latest_week_lift']:+.1%} +/- {r['latest_week_ci_half']:.1%} no longer clears zero "
-                         "(not a significant fade, but watch it)")
-        return "SHIP", notes
-    # not significant
-    if r["underpowered"]:
-        return "INCONCLUSIVE (underpowered)", [f"lift {r['lift']:+.1%} not significant, and this sample cannot detect lifts below "
-                                              f"{r['mde']:.1%} (worth-shipping bar is {MIN_EFFECT:.0%}): unknown, not zero"] + notes
-    return "NO EFFECT FOUND", [f"lift {r['lift']:+.1%} (95% CI {r['ci_low']:+.1%} to {r['ci_high']:+.1%}); the test could have "
-                              f"detected {r['mde']:.1%}"] + notes
 
 
 # ---------------------------------------------------------------------------------- building the table
@@ -98,7 +42,8 @@ def _sql(name: str) -> str:
     return (SQL_DIR / name).read_text()
 
 
-def build(con: duckdb.DuckDBPyConnection, min_users_week: int = 500) -> pd.DataFrame:
+def build(con: duckdb.DuckDBPyConnection, min_users_week: int = 500, min_effect: float | None = None) -> pd.DataFrame:
+    bar = MIN_EFFECT if min_effect is None else min_effect
     exps = con.execute("SELECT experiment_id, name, primary_metric FROM experiments ORDER BY experiment_id").df()
     pairs = con.execute(_sql("analysis/overlapping_experiments.sql")).df()
     partner = {}
@@ -125,7 +70,7 @@ def build(con: duckdb.DuckDBPyConnection, min_users_week: int = 500) -> pd.DataF
                "mde": float(mde_rel(n_arm, y.mean(), y.std(ddof=1), rho=rho)),
                "guardrail_metric": sec, "guardrail_lift": gua["cuped_lift"],
                "guardrail_breach": bool(gua["cuped_lift"] + gua["cuped_CI±"] < 0)}
-        row["underpowered"] = row["mde"] > MIN_EFFECT
+        row["underpowered"] = row["mde"] > bar
         cost = COST_PER_TREATED_USER.get(e.experiment_id)
         row["net_value"] = row["net_ci_low"] = row["net_ci_high"] = np.nan
         if cost is not None and not rev_primary:
@@ -152,7 +97,7 @@ def build(con: duckdb.DuckDBPyConnection, min_users_week: int = 500) -> pd.DataF
         pv = t.loc[ok, "p_value"].to_numpy()
         t.loc[ok, "p_adj"] = holm_adjust(pv)
         t.loc[ok, "significant"] = holm(pv, ALPHA)
-    out = [decide(r) for r in t.to_dict("records")]
+    out = [decide(r, min_effect=bar) for r in t.to_dict("records")]
     t["decision"] = [o[0] for o in out]
     t["reasons"] = [" | ".join(o[1]) for o in out]
     return t
@@ -168,16 +113,14 @@ def _fmt(t: pd.DataFrame) -> pd.DataFrame:
 
 
 def main(min_effect: float | None = None) -> None:
-    global MIN_EFFECT
-    if min_effect is not None:
-        MIN_EFFECT = min_effect
+    bar = MIN_EFFECT if min_effect is None else min_effect
     con = duckdb.connect(str(DB_PATH), read_only=True)
     dq = con.execute(_sql("analysis/data_quality_events.sql")).df()
-    t = build(con)
+    t = build(con, min_effect=bar)
     art = ROOT / "artifacts"; art.mkdir(exist_ok=True)
     t.to_csv(art / "scorecard.csv", index=False)
     pd.set_option("display.width", 250, "display.max_columns", 30, "display.max_colwidth", 60)
-    print(f"EXPERIMENT SCORECARD  (worth-shipping bar {MIN_EFFECT:.0%}, Holm alpha {ALPHA}, SRM alpha {SRM_ALPHA})")
+    print(f"EXPERIMENT SCORECARD  (worth-shipping bar {bar:.0%}, Holm alpha {ALPHA}, SRM alpha {SRM_ALPHA})")
     print(f"Data quality of the event stream: {1 - dq.distinct_events.sum() / dq.raw_events.sum():.2%} duplicates removed, "
           f"{dq.late_events.sum() / dq.distinct_events.sum():.2%} of events arrived more than a day late.\n")
     print(_fmt(t).to_string(index=False))

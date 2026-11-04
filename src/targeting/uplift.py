@@ -24,17 +24,15 @@ import duckdb
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import KFold
 
-from src.config import COST_PER_TREATED, VALUE_PER_ORDER, DB_PATH, EXPERIMENTS, ROOT, SQL_DIR
+from src.config import COST_PER_TREATED, DB_PATH, EXPERIMENTS, ROOT, SQL_DIR, VALUE_PER_ORDER
+from src.engine.uplift_core import SEED, fit_predict, gain_curve, ipw_effect, qini_area  # noqa: F401  (re-exported)
 
 ART = ROOT / "artifacts"
-SEED = 2026
 NUM = ["orders_pre", "revenue_pre", "sessions_pre", "days_since_signup", "is_new"]
 CAT = ["device", "channel", "city"]
 
-# Business assumptions for the profit view (ASSUMPTIONS, not measured facts).
 
 
 # ------------------------------------------------------------------------------- data
@@ -59,31 +57,8 @@ def design_matrix(d: pd.DataFrame) -> tuple[np.ndarray, list[bool]]:
     return X.to_numpy(), [False] * len(NUM) + [True] * len(CAT)
 
 
-def _hgb(cat_mask, loss="poisson", seed=SEED):
-    return HistGradientBoostingRegressor(
-        loss=loss, learning_rate=0.05, max_iter=150, max_depth=4, min_samples_leaf=200,
-        l2_regularization=1.0, categorical_features=cat_mask, random_state=seed)
-
-
 # ---------------------------------------------------------------------------- learners
-def fit_predict(kind: str, Xtr, ytr, ttr, Xte, cat_mask, seed: int = SEED) -> np.ndarray:
-    """Return predicted uplift (effect of treatment on expected orders) for the rows of Xte."""
-    if kind == "S":
-        m = _hgb([*cat_mask, False], seed=seed).fit(np.c_[Xtr, ttr], ytr)
-        return m.predict(np.c_[Xte, np.ones(len(Xte))]) - m.predict(np.c_[Xte, np.zeros(len(Xte))])
-    m1 = _hgb(cat_mask, seed=seed).fit(Xtr[ttr == 1], ytr[ttr == 1])
-    m0 = _hgb(cat_mask, seed=seed).fit(Xtr[ttr == 0], ytr[ttr == 0])
-    if kind == "T":
-        return m1.predict(Xte) - m0.predict(Xte)
-    if kind == "X":
-        # impute each user's missing counterfactual, then regress the imputed effects
-        d1 = ytr[ttr == 1] - m0.predict(Xtr[ttr == 1])
-        d0 = m1.predict(Xtr[ttr == 0]) - ytr[ttr == 0]
-        t1 = _hgb(cat_mask, "squared_error", seed).fit(Xtr[ttr == 1], d1)
-        t0 = _hgb(cat_mask, "squared_error", seed).fit(Xtr[ttr == 0], d0)
-        g = ttr.mean()                                   # propensity = share treated
-        return g * t0.predict(Xte) + (1 - g) * t1.predict(Xte)
-    raise ValueError(kind)
+# The learners and the scoring maths live in src.engine.uplift_core (no database, no plotting); re-exported here.
 
 
 def cross_fit(d: pd.DataFrame, t: np.ndarray, n_splits: int = 4, seed: int = SEED) -> pd.DataFrame:
@@ -102,24 +77,6 @@ def cross_fit(d: pd.DataFrame, t: np.ndarray, n_splits: int = 4, seed: int = SEE
 
 
 # -------------------------------------------------------------------------- evaluation
-def ipw_effect(y, t) -> np.ndarray:
-    """Per-user unbiased estimate of the treatment effect (randomised experiment, known propensity)."""
-    p = t.mean()
-    return y * (t / p - (1 - t) / (1 - p))
-
-
-def gain_curve(score, tau_hat) -> np.ndarray:
-    """Cumulative estimated incremental orders when treating the top-k users by score."""
-    order = np.argsort(-score, kind="stable")
-    return np.cumsum(tau_hat[order])
-
-
-def qini_area(score, tau_hat) -> float:
-    """Incremental orders per 1000 users gained over random targeting, averaged across budgets."""
-    G = gain_curve(score, tau_hat)
-    n = len(G)
-    lift_over_random = G - (np.arange(1, n + 1) / n) * G[-1]
-    return float(lift_over_random.mean() * 1000 / n)
 
 
 def bootstrap_ci(scores: pd.DataFrame, tau_hat, reps=200):
@@ -184,7 +141,7 @@ def main(exp_id: str = "exp_008") -> None:
         diag = {c: float(top_true[np.argsort(-scores[c].to_numpy(), kind="stable")[:k30]].mean()) for c in scores}
         diag = pd.Series(diag, name="share_of_top30_that_are_truly_high_lift").round(3)
         diag.to_csv(ART / f"uplift_top30_diagnostic_{tag}.csv")
-        print(f"\nShare of each model's top-30% that truly belongs to the highest-true-lift 30% (random = 0.30):")
+        print("\nShare of each model's top-30% that truly belongs to the highest-true-lift 30% (random = 0.30):")
         print(diag.to_string())
 
     # ---- measured uplift by decile for the best learner
@@ -217,7 +174,7 @@ def main(exp_id: str = "exp_008") -> None:
     best_k = int(np.argmax(profit)) + 1
     treat_all = profit[-1]
     print(f"\nProfit view (ASSUMPTIONS: INR {VALUE_PER_ORDER:.0f}/incremental order, INR {COST_PER_TREATED:.0f}/treated user)")
-    print(f"  treat nobody : INR 0")
+    print("  treat nobody : INR 0")
     print(f"  treat everyone: INR {treat_all:,.0f}")
     print(f"  treat top {best_k / n:.0%} by {best}: INR {profit[best_k - 1]:,.0f}")
     print("  (optimistic: the best cut-off is picked on the same data it is scored on; confirm on a fresh holdout)")

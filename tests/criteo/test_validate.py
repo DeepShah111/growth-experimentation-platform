@@ -1,6 +1,4 @@
 """Run the Criteo validation on a SYNTHETIC Criteo-shaped file (no download needed)."""
-import numpy as np
-import pandas as pd
 
 from src.criteo.validate import balance_table, diff_in_rates, lin_adjusted_effect, run
 

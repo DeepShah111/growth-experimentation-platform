@@ -185,7 +185,7 @@ def study_peeking(reps: int = 1000) -> pd.DataFrame:
 
 
 # ================================================================== 3. MULTIPLE TESTING
-def study_multiple(reps: int = 1000) -> dict:
+def study_multiple(n_null_tests: int = 5000, n_groups: int = 2000) -> dict:
     ART.mkdir(exist_ok=True)
     con = _con()
     rng = np.random.default_rng(RNG_SEED)
@@ -216,17 +216,17 @@ def study_multiple(reps: int = 1000) -> dict:
     # family-wise error: run m null tests, how often is at least one 'significant'?
     d3 = _user_metrics(con, "exp_003")
     y3 = d3.orders_in.to_numpy(float)
-    p_null = np.empty(5000)
+    p_null = np.empty(n_null_tests)
     for i in range(len(p_null)):
         idx = rng.permutation(len(y3)) < len(y3) // 2
         p_null[i] = welch_t(y3[idx], y3[~idx])[1]
     fam = []
     for m in (1, 5, 10, 20):
-        groups = rng.choice(p_null, size=(2000, m))
+        groups = rng.choice(p_null, size=(n_groups, m))
         fam.append({"n_null_experiments": m,
                     "P(>=1 false win), no correction": round(float((groups < 0.05).any(1).mean()), 3),
                     "theory 1-0.95^m": round(1 - 0.95**m, 3),
-                    "with Holm": round(float(np.mean([holm(g).any() for g in groups[:1000]])), 3)})
+                    "with Holm": round(float(np.mean([holm(g).any() for g in groups[: n_groups // 2]])), 3)})
     fam = pd.DataFrame(fam)
     fam.to_csv(ART / "family_wise_error.csv", index=False)
     return {"verdicts": t, "fwer": fam}
@@ -251,5 +251,5 @@ if __name__ == "__main__":
         print(pd.read_csv(ART / "peeking_vs_looks.csv").to_string(index=False))
     if a.study in ("multiple", "all"):
         print("\n=== MULTIPLE TESTING ===")
-        o = study_multiple(a.reps)
+        o = study_multiple()
         print(o["verdicts"].to_string(index=False)); print(); print(o["fwer"].to_string(index=False))

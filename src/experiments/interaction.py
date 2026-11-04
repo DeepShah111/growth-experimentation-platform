@@ -32,7 +32,7 @@ def interaction_effect(cells: pd.DataFrame) -> dict:
     se = np.sqrt(sum(var[k] / n[k] for k in (tt, tc, ct, cc)))
     z = inter / se
     return {"effect_A_when_B_on": eff_a_given_b, "effect_A_when_B_off": eff_a_given_not_b,
-            "interaction": inter, "ci_half": 1.96 * se, "p_value": float(2 * (1 - stats.norm.cdf(abs(z)))),
+            "interaction": inter, "ci_half": 1.96 * se, "p_value": float(2 * stats.norm.sf(abs(z))),
             "users": int(sum(n.values()))}
 
 

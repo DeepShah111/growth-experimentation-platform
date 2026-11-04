@@ -2,7 +2,9 @@
 --   Recency   = days since last order   (lower is better)
 --   Frequency = number of orders
 --   Monetary  = total order value
--- Each is scored 1-5 with NTILE (5 = best); segment labels come from simple, readable rules.
+-- Each is scored 1-5 by RANK position (5 = best); segment labels come from simple, readable rules.
+-- RANK, not NTILE: users with identical values (most buyers have 1 order) must get the SAME score. NTILE would split
+-- such ties across different scores by user_id, which is arbitrary. With ties, the lowest scores can be empty on purpose.
 WITH base AS (
     SELECT user_id,
            DATE_DIFF('day', CAST(MAX(order_ts) AS DATE), CAST($as_of AS DATE)) AS recency_days,
@@ -14,9 +16,9 @@ WITH base AS (
 ),
 scored AS (
     SELECT *,
-           NTILE(5) OVER (ORDER BY recency_days DESC, user_id) AS r_score,   -- most recent buyers get 5
-           NTILE(5) OVER (ORDER BY frequency,        user_id)  AS f_score,
-           NTILE(5) OVER (ORDER BY monetary,         user_id)  AS m_score
+           1 + LEAST(4, FLOOR(5.0 * (RANK() OVER (ORDER BY recency_days DESC) - 1) / COUNT(*) OVER ()))::INT AS r_score,  -- most recent buyers get 5
+           1 + LEAST(4, FLOOR(5.0 * (RANK() OVER (ORDER BY frequency)        - 1) / COUNT(*) OVER ()))::INT AS f_score,
+           1 + LEAST(4, FLOOR(5.0 * (RANK() OVER (ORDER BY monetary)         - 1) / COUNT(*) OVER ()))::INT AS m_score
     FROM base
 ),
 labelled AS (
