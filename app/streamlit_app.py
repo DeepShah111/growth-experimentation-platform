@@ -81,15 +81,16 @@ def get_row(df, col, val):
 # A roomier navigation panel: wider, larger labels, a clear highlight on the page you are on.
 st.markdown("""
 <style>
-section[data-testid="stSidebar"] { width: 23rem !important; min-width: 23rem !important; }
-section[data-testid="stSidebar"] > div:first-child { width: 23rem !important; }
-[data-testid="stSidebar"] h1 { font-size: 1.7rem; line-height: 1.25; padding-bottom: .4rem; }
-[data-testid="stSidebar"] div[role="radiogroup"] { gap: .2rem; }
-[data-testid="stSidebar"] div[role="radiogroup"] label { padding: .55rem .75rem; border-radius: 10px; width: 100%; }
-[data-testid="stSidebar"] div[role="radiogroup"] label p { font-size: 1.08rem; }
+/* Navigation panel: scales with the screen (about 18% of it, never below 15rem or above 18.5rem) so the content keeps the room. */
+section[data-testid="stSidebar"] { width: clamp(15rem, 18vw, 18.5rem) !important; min-width: clamp(15rem, 18vw, 18.5rem) !important; }
+section[data-testid="stSidebar"] > div:first-child { width: clamp(15rem, 18vw, 18.5rem) !important; }
+[data-testid="stSidebar"] h1 { font-size: 1.35rem; line-height: 1.25; padding-bottom: .3rem; }
+[data-testid="stSidebar"] div[role="radiogroup"] { gap: .1rem; }
+[data-testid="stSidebar"] div[role="radiogroup"] label { padding: .4rem .6rem; border-radius: 8px; width: 100%; }
+[data-testid="stSidebar"] div[role="radiogroup"] label p { font-size: 1rem; }
 [data-testid="stSidebar"] div[role="radiogroup"] label:hover { background: rgba(120, 140, 255, .14); }
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) { background: rgba(120, 140, 255, .26); font-weight: 600; }
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] { font-size: .85rem; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] { font-size: .8rem; }
 </style>
 """, unsafe_allow_html=True)
 
