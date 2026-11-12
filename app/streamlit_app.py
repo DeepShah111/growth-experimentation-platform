@@ -91,6 +91,9 @@ section[data-testid="stSidebar"] > div:first-child { width: clamp(15rem, 18vw, 1
 [data-testid="stSidebar"] div[role="radiogroup"] label:hover { background: rgba(120, 140, 255, .14); }
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) { background: rgba(120, 140, 255, .26); font-weight: 600; }
 [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { font-size: .8rem; }
+/* Metric values: wrap long text (such as an interval) instead of cutting it off with an ellipsis. */
+[data-testid="stMetricValue"] { font-size: 1.7rem; }
+[data-testid="stMetricValue"] > div { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.2; }
 </style>
 """, unsafe_allow_html=True)
 
