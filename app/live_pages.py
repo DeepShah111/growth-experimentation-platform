@@ -151,12 +151,12 @@ def _render_result(res: dict, cfg: AnalysisConfig, spec, extra: dict):
     arms = res["arms"]
     for r in arms.itertuples():
         with st.container(border=True):
-            top = st.columns([2, 1, 1, 1, 1])
+            top = st.columns([1.7, 1.1, 1.7, 1.1, 1.2])
             top[0].markdown(f"### {r.arm}  \n:{COLOUR[r.decision]}[**{r.decision}**]")
             top[1].metric("Lift vs control", f"{r.lift:+.1%}", help="Relative change in the average outcome per user")
             top[2].metric("95% interval", f"{r.ci_low:+.1%} to {r.ci_high:+.1%}")
             top[3].metric("Adjusted p (Holm)", "n/a" if pd.isna(r.p_adj) else (f"{r.p_adj:.2g}"))
-            top[4].metric("Smallest lift detectable", "n/a" if pd.isna(r.mde) else f"{r.mde:.1%}", help="Given this sample size and variance")
+            top[4].metric("Detectable lift", "n/a" if pd.isna(r.mde) else f"{r.mde:.1%}", help="The smallest relative lift this sample could reliably detect, given its size and variance")
             st.write(r.reasons)
             if cfg.value_per_unit is not None and pd.notna(r.net_value):
                 st.caption(f"Profit if shipped to everyone: **{cfg.currency} {r.net_value:+.3f} per user** "
@@ -273,7 +273,7 @@ def page_plan():
     m[0].metric("Users per arm", f"{p['n_per_arm']:,}")
     m[1].metric("Users in total", f"{p['total_users']:,}")
     m[2].metric("Days of traffic", f"{p['days']:,}")
-    m[3].metric("Run for (whole weeks)", f"{p['weeks']} weeks", help="Round up to full weeks: weekday and weekend behaviour differ")
+    m[3].metric("Run for (whole weeks)", f"{p['weeks']} week{'s' if p['weeks'] != 1 else ''}", help="Round up to full weeks: weekday and weekend behaviour differ")
     if arms > 2:
         st.caption(f"With {arms} arms the significance level is split across {arms - 1} comparisons with control (Bonferroni): {p['alpha_used']:.3f} each.")
     if p["weeks"] > 8:

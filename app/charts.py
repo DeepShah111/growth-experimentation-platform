@@ -93,11 +93,11 @@ def peeking_bars(df: pd.DataFrame) -> alt.Chart:
     d = df.copy(); d["over"] = d.false_positive_rate > 0.075
     bars = alt.Chart(d).mark_bar().encode(
         x=alt.X("false_positive_rate:Q", title="Share of A/A tests (no real effect) declared a 'win'", axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 0.31])),
-        y=alt.Y("strategy:N", sort="-x", title=None),
+        y=alt.Y("strategy:N", sort="-x", title=None, axis=alt.Axis(labelLimit=330)),
         color=alt.condition(alt.datum.false_positive_rate > 0.075, alt.value(RED), alt.value(BLUE)),
         tooltip=["strategy", alt.Tooltip("false_positive_rate:Q", format=".1%")])
-    txt = alt.Chart(d).mark_text(align="left", dx=5, color="#e6e6e6", fontWeight="bold").encode(x="false_positive_rate:Q", y=alt.Y("strategy:N", sort="-x"), text=alt.Text("false_positive_rate:Q", format=".1%"))
-    return (bars + txt + _rule(0.05, GREEN)).properties(height=40 * len(d) + 40)
+    txt = alt.Chart(d).mark_text(align="left", dx=5, color="#e6e6e6", fontWeight="bold").encode(x="false_positive_rate:Q", y=alt.Y("strategy:N", sort="-x", axis=alt.Axis(labelLimit=330)), text=alt.Text("false_positive_rate:Q", format=".1%"))
+    return (bars + txt + _rule(0.05, GREEN)).properties(height=40 * len(d) + 90)
 
 
 def peeking_line(df: pd.DataFrame) -> alt.Chart:
@@ -163,7 +163,7 @@ def uplift_models_chart(df: pd.DataFrame) -> alt.Chart:
     col = alt.Color("kind:N", scale=alt.Scale(domain=["ML model", "baseline"], range=[BLUE, GREY]), legend=alt.Legend(title=None, orient="bottom"))
     err = alt.Chart(d).mark_rule(strokeWidth=3).encode(y=y, x=alt.X("ci_low:Q", title="Extra orders per 1,000 users vs random targeting (95% interval)"), x2="ci_high:Q", color=col)
     pts = alt.Chart(d).mark_point(filled=True, size=130).encode(y=y, x="qini:Q", color=col, tooltip=["model", alt.Tooltip("qini:Q", format=".1f"), alt.Tooltip("ci_low:Q", format=".1f"), alt.Tooltip("ci_high:Q", format=".1f")])
-    return (_rule(0, "#999", (0, 0)) + err + pts).properties(height=44 * len(d) + 60)
+    return (_rule(0, "#999", (0, 0)) + err + pts).properties(height=46 * len(d) + 140)
 
 
 def decile_chart(df: pd.DataFrame) -> alt.Chart:
@@ -341,7 +341,7 @@ def arms_forest_chart(arms: pd.DataFrame, bar: float = 0.03) -> alt.Chart:
     rng = alt.Chart(d).mark_rule(strokeWidth=3).encode(x=alt.X("ci_low:Q", title="Relative lift vs control (95% interval)", axis=alt.Axis(format="%")),
                                                        x2="ci_high:Q", y=y, color=colour, tooltip=tip)
     pts = alt.Chart(d).mark_point(filled=True, size=120).encode(x="lift:Q", y=y, color=colour, tooltip=tip)
-    return (_rule(0, "#999", (0, 0)) + _rule(bar, GREEN, (5, 4)) + rng + pts).properties(height=max(110, 52 * len(d) + 50))
+    return (_rule(0, "#999", (0, 0)) + _rule(bar, GREEN, (5, 4)) + rng + pts).properties(height=60 * len(d) + 150)   # Streamlit full-width mode: height is the TOTAL (plot + axis + legend)
 
 
 def live_power_chart(df: pd.DataFrame, target_lift: float | None = None) -> alt.Chart:
@@ -384,4 +384,4 @@ def qini_live_chart(df: pd.DataFrame) -> alt.Chart:
     err = alt.Chart(d).mark_rule(strokeWidth=3).encode(y=y, x=alt.X("ci_low:Q", title="Extra outcome per 1,000 users vs the average user (95% interval)"), x2="ci_high:Q", color=col)
     pts = alt.Chart(d).mark_point(filled=True, size=130).encode(y=y, x="qini_per_1000_users:Q", color=col,
                                                                  tooltip=["model", alt.Tooltip("qini_per_1000_users:Q", format=".1f")])
-    return (_rule(0, "#999", (0, 0)) + err + pts).properties(height=44 * len(d) + 60)
+    return (_rule(0, "#999", (0, 0)) + err + pts).properties(height=46 * len(d) + 140)
